@@ -24,7 +24,8 @@ export default {
       notification: { show: false, message: '', type: 'info' },
       tabs: [
         { id: 'main', label: 'Главная', route: { name: 'ManagerMain' } },
-        { id: 'docs', label: 'Документы', route: { name: 'ManagerDocs' } }
+        { id: 'docs', label: 'Документы', route: { name: 'ManagerDocs' } },
+        { id: 'stats', label: 'Статистика', route: { name: 'ManagerStats' } }
       ]
     }
   },

@@ -47,7 +47,7 @@
           <button class="excel-btn" @click="exportToExcel"
             :disabled="!tableFilters.group_id || filteredPlans.length === 0">
 
-            <span>Экспорт в Excel</span>
+            <span>Экспорт в xlsx</span>
           </button>
         </div>
 
@@ -70,7 +70,7 @@
 
         <!-- Сетка карточек -->
         <div v-else class="cards-grid">
-          <div v-for="plan in filteredPlans" :key="plan.date" class="date-card">
+          <div v-for="plan in filteredPlans" :key="plan.id" class="date-card" @click="openEditModal(plan)">
             <h3>
               {{ formatDate(plan.date) }}<br>
               {{ formatWeekday(plan.date) }}
@@ -82,6 +82,74 @@
                 {{ th.training_type.name }}: {{ th.hours }} ч
               </div>
             </div>
+          </div>
+        </div>
+        <!-- МОДАЛЬНОЕ ОКНО -->
+        <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
+          <div class="edit-modal">
+
+            <div class="modal-header">
+              <h2>
+                Редактирование тренировки
+              </h2>
+
+              <button class="close-btn" @click="closeEditModal">
+                ✕
+              </button>
+            </div>
+
+            <div v-if="editingPlan">
+
+              <div class="modal-info">
+                <p>
+                  <strong>Дата:</strong>
+                  {{ formatDate(editingPlan.date) }}
+                </p>
+
+                <p>
+                  <strong>Группа:</strong>
+                  {{ editingPlan.group?.name }}
+                </p>
+              </div>
+
+              <div class="edit-types">
+
+                <div v-for="(row, index) in editingPlan.training_hours" :key="index" class="edit-row">
+
+                  <select v-model="row.training_type.id">
+                    <option v-for="t in trainingTypes" :key="t.id" :value="t.id">
+                      {{ t.name }}
+                    </option>
+                  </select>
+
+                  <input type="number" min="0" step="0.5" v-model.number="row.hours" />
+
+                  <button class="remove-btn" @click="removeEditType(index)">
+                    ✕
+                  </button>
+
+                </div>
+
+              </div>
+
+              <button class="ghost add-btn" @click="addEditType">
+                + Добавить раздел подготовки
+              </button>
+
+              <div class="modal-actions">
+
+                <button class="primary" @click="savePlanChanges">
+                  Сохранить
+                </button>
+
+                <button class="secondary" @click="closeEditModal">
+                  Отмена
+                </button>
+
+              </div>
+
+            </div>
+
           </div>
         </div>
       </div>
@@ -183,6 +251,8 @@ export default {
         first_name: '',
         middle_name: ''
       },
+      showEditModal: false,
+      editingPlan: null,
 
       form: {
         group_id: '',
@@ -268,6 +338,86 @@ export default {
     removeType(i) {
       this.form.training_types.splice(i, 1)
     },
+    // =========================
+// Открыть модальное окно
+// =========================
+openEditModal(plan) {
+
+  this.editingPlan = JSON.parse(
+    JSON.stringify(plan)
+  )
+
+  this.showEditModal = true
+},
+
+// =========================
+// Закрыть модальное окно
+// =========================
+closeEditModal() {
+  this.showEditModal = false
+  this.editingPlan = null
+},
+
+// =========================
+// Добавить раздел
+// =========================
+addEditType() {
+
+  this.editingPlan.training_hours.push({
+    training_type: {
+      id: '',
+      name: ''
+    },
+    hours: 0
+  })
+},
+
+// =========================
+// Удалить раздел
+// =========================
+removeEditType(index) {
+
+  this.editingPlan.training_hours.splice(index, 1)
+},
+
+// =========================
+// Сохранение
+// =========================
+async savePlanChanges() {
+
+  try {
+
+    const payload = {
+      total_hours: this.editingPlan.training_hours.reduce(
+        (sum, t) => sum + Number(t.hours || 0),
+        0
+      ),
+
+      training_hours: this.editingPlan.training_hours.map(t => ({
+        training_type_id: t.training_type.id,
+        hours: t.hours
+      }))
+    }
+
+    await axios.patch(
+      `/api/training-plans/${this.editingPlan.id}/`,
+      payload
+    )
+
+    await this.loadAllPlans()
+
+    this.closeEditModal()
+
+    this.notification = 'Тренировка обновлена'
+
+  } catch (e) {
+
+    console.error(e)
+
+    this.notification =
+      'Ошибка сохранения тренировки'
+  }
+},
 
     async generatePlan() {
       this.loading = true
@@ -857,7 +1007,56 @@ input:focus {
   transform: none;
   box-shadow: none;
 }
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 999;
+}
 
+.edit-modal {
+  width: 700px;
+  max-width: 95%;
+  background: white;
+  border-radius: 18px;
+  padding: 24px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.close-btn {
+  border: none;
+  background: none;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.edit-row {
+  display: grid;
+  grid-template-columns: 1fr 120px 50px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.add-btn {
+  margin-top: 10px;
+}
 /* =========================
    📱 МОБИЛЬНАЯ АДАПТАЦИЯ ФОРМЫ
 ========================= */

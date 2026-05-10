@@ -116,7 +116,11 @@ class TrainingTypeSerializer(serializers.ModelSerializer):
 # TrainingHour & TrainingPlan
 # -----------------------------
 class TrainingHourSerializer(serializers.ModelSerializer):
-    training_type = TrainingTypeSerializer(read_only=True)
+
+    training_type = TrainingTypeSerializer(
+        read_only=True
+    )
+
     training_type_id = serializers.PrimaryKeyRelatedField(
         source='training_type',
         queryset=TrainingType.objects.all(),
@@ -125,20 +129,65 @@ class TrainingHourSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = TrainingHour
-        fields = ['id', 'training_type', 'training_type_id', 'hours']
+        fields = [
+            'id',
+            'training_type',
+            'training_type_id',
+            'hours'
+        ]
 
 class TrainingPlanSerializer(serializers.ModelSerializer):
+
     group = GroupSerializer(read_only=True)
+
     group_id = serializers.PrimaryKeyRelatedField(
         source='group',
         queryset=Group.objects.all(),
         write_only=True
     )
-    training_hours = TrainingHourSerializer(many=True, read_only=True)
+
+    training_hours = TrainingHourSerializer(
+        many=True
+    )
 
     class Meta:
         model = TrainingPlan
-        fields = ['id', 'group', 'group_id', 'date', 'total_hours', 'training_hours']
+        fields = [
+            'id',
+            'group',
+            'group_id',
+            'date',
+            'total_hours',
+            'training_hours'
+        ]
+
+    def update(self, instance, validated_data):
+
+        training_hours_data = validated_data.pop(
+            'training_hours',
+            []
+        )
+
+        instance.total_hours = validated_data.get(
+            'total_hours',
+            instance.total_hours
+        )
+
+        instance.save()
+
+        # удаляем старые часы
+        instance.training_hours.all().delete()
+
+        # создаём новые
+        for item in training_hours_data:
+
+            TrainingHour.objects.create(
+                training_plan=instance,
+                training_type=item['training_type'],
+                hours=item['hours']
+            )
+
+        return instance
 
 # -----------------------------
 # Attendance

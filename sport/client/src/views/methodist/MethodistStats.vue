@@ -16,6 +16,9 @@
         <button :class="{ 'active-tab': activeTab === 'quarter' }" @click="activeTab = 'quarter'">
           Квартальная
         </button>
+        <button :class="{ 'active-tab': activeTab === 'training' }" @click="activeTab = 'training'">
+          По тренировкам
+        </button>
       </div>
 
       <!-- Контент табов -->
@@ -31,6 +34,9 @@
               <select v-model="statsYear">
                 <option v-for="y in years" :key="y" :value="String(y)">{{ y }}</option>
               </select>
+              <button class="export-btn" @click="exportMonthlyStats" :disabled="!monthlyStats.length">
+                Экспорт в xlsx
+              </button>
             </div>
           </div>
 
@@ -80,7 +86,29 @@
 
         <!-- Квартальная статистика -->
         <div v-show="activeTab === 'quarter'" class="stats-block quarterly">
-          <h3>Квартальная статистика ({{ quarterLabel }})</h3>
+          <div class="block-header">
+            <h3>
+              Квартальная статистика
+              ({{ quarterLabel }})
+            </h3>
+
+            <div class="inline-actions">
+              <select v-model="statsQuarter">
+                <option v-for="q in quarters" :key="q.value" :value="q.value">
+                  {{ q.label }}
+                </option>
+              </select>
+
+              <select v-model="statsYear">
+                <option v-for="y in years" :key="y" :value="String(y)">
+                  {{ y }}
+                </option>
+              </select>
+              <button class="export-btn" @click="exportQuarterlyStats" :disabled="!quarterlyStats.length">
+                Экспорт в xlsx
+              </button>
+            </div>
+          </div>
           <div class="table-container">
             <table class="data-table hoverable">
               <thead>
@@ -115,6 +143,106 @@
             </table>
           </div>
         </div>
+        <!-- Статистика по тренировкам -->
+        <div v-show="activeTab === 'training'" class="stats-block training-stats">
+          <div class="block-header">
+            <h3>Статистика по тренировкам</h3>
+
+            <div class="inline-actions filters">
+              <select v-model="trainingFilters.department">
+                <option value="">Все отделения</option>
+                <option v-for="d in departments" :key="d.id" :value="d.id">
+                  {{ d.name }}
+                </option>
+              </select>
+
+              <select v-model="trainingFilters.coach">
+                <option value="">Все тренеры</option>
+                <option v-for="c in filteredCoaches" :key="c.id" :value="c.id">
+                  {{ c.user.last_name }} {{ c.user.first_name }}
+                </option>
+              </select>
+
+              <select v-model="trainingFilters.group">
+                <option value="">Все группы</option>
+                <option v-for="g in filteredGroups" :key="g.id" :value="g.id">
+                  {{ g.name }}
+                </option>
+              </select>
+
+              <select v-model="statsMonth">
+                <option v-for="m in months" :key="m.value" :value="m.value">
+                  {{ m.label }}
+                </option>
+              </select>
+
+              <select v-model="statsYear">
+                <option v-for="y in years" :key="y" :value="String(y)">
+                  {{ y }}
+                </option>
+              </select>
+              <button class="export-btn" @click="exportAttendanceStats">
+                Экспорт в xlsx
+              </button>
+            </div>
+          </div>
+
+          <div class="training-layout">
+
+            <!-- Нет тренировочного плана -->
+            <div class="training-card">
+              <h4>Нет тренировочного плана</h4>
+
+              <div v-if="coachesWithoutPlans.length">
+                <div v-for="coach in coachesWithoutPlans" :key="coach.id" class="warning-item">
+                  {{ coach.user.last_name }} {{ coach.user.first_name }}
+                </div>
+              </div>
+
+              <div v-else class="empty">
+                Все тренеры сформировали планы
+              </div>
+            </div>
+
+            <!-- Посещаемость -->
+            <div class="training-card attendance-card">
+              <h4>Посещаемость</h4>
+
+              <div class="attendance-summary">
+                <div class="attendance-circle">
+                  {{ averageAttendance }}%
+                </div>
+              </div>
+
+              <div class="table-container">
+                <table class="data-table hoverable">
+                  <thead>
+                    <tr>
+                      <th>Спортсмен</th>
+                      <th>Группа</th>
+                      <th>Посещаемость</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    <tr v-for="row in attendanceStats" :key="row.id">
+                      <td>{{ row.athlete }}</td>
+                      <td>{{ row.group }}</td>
+                      <td>{{ row.percent }}%</td>
+                    </tr>
+
+                    <tr v-if="!attendanceStats.length">
+                      <td colspan="3" class="empty">
+                        Нет данных
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
       </div>
     </section>
   </div>
@@ -122,35 +250,307 @@
 
 <script>
 import axios from '../../axios'
+import * as XLSX from 'xlsx'
+import { saveAs } from 'file-saver'
 
 export default {
   name: 'MethodistStats',
+
   data() {
     const today = new Date()
+
     return {
       statsMonth: String(today.getMonth() + 1),
       statsYear: String(today.getFullYear()),
+      statsQuarter: String(
+        Math.floor(today.getMonth() / 3) + 1
+      ),
+
       competitions: [],
-      activeTab: 'month'
+      trainingPlans: [],
+      attendance: [],
+      departments: [],
+      coaches: [],
+      groups: [],
+
+      activeTab: 'month',
+
+      trainingFilters: {
+        department: '',
+        coach: '',
+        group: ''
+      }
     }
   },
+
+  // =========================
+  // WATCH
+  // =========================
+  watch: {
+
+    // При смене отделения
+    'trainingFilters.department'() {
+
+      // сброс тренера
+      this.trainingFilters.coach = ''
+
+      // сброс группы
+      this.trainingFilters.group = ''
+    },
+
+    // При смене тренера
+    'trainingFilters.coach'() {
+
+      // сброс группы
+      this.trainingFilters.group = ''
+    }
+  },
+
   computed: {
+
+    // =========================
+    // Фильтрация тренеров
+    // =========================
+    filteredCoaches() {
+
+      // если отделение не выбрано
+      if (!this.trainingFilters.department) {
+        return this.coaches
+      }
+
+      // только тренеры выбранного отделения
+      return this.coaches.filter(
+        coach =>
+          coach.department?.id ==
+          this.trainingFilters.department
+      )
+    },
+
+    // =========================
+    // Фильтрация групп
+    // =========================
+    filteredGroups() {
+
+      let groups = this.groups
+
+      // фильтр по отделению
+      if (this.trainingFilters.department) {
+
+        groups = groups.filter(
+          group =>
+            group.department?.id ==
+            this.trainingFilters.department
+        )
+      }
+
+      // фильтр по тренеру
+      if (this.trainingFilters.coach) {
+
+        groups = groups.filter(
+          group =>
+            group.coach?.id ==
+            this.trainingFilters.coach
+        )
+      }
+
+      return groups
+    },
+
+    // =========================
+    // Планы тренировок
+    // =========================
+    filteredTrainingPlans() {
+
+      return this.trainingPlans.filter(plan => {
+
+        const d = new Date(plan.date)
+
+        const monthOk =
+          d.getMonth() === Number(this.statsMonth) - 1
+
+        const yearOk =
+          d.getFullYear() === Number(this.statsYear)
+
+        const departmentOk =
+          !this.trainingFilters.department ||
+          plan.group?.department?.id ==
+          this.trainingFilters.department
+
+        const coachOk =
+          !this.trainingFilters.coach ||
+          plan.group?.coach?.id ==
+          this.trainingFilters.coach
+
+        const groupOk =
+          !this.trainingFilters.group ||
+          plan.group?.id ==
+          this.trainingFilters.group
+
+        return (
+          monthOk &&
+          yearOk &&
+          departmentOk &&
+          coachOk &&
+          groupOk
+        )
+      })
+    },
+
+    // =========================
+    // Тренеры без планов
+    // =========================
+    coachesWithoutPlans() {
+
+      return this.filteredCoaches.filter(coach => {
+
+        const hasPlan =
+          this.filteredTrainingPlans.some(
+            p => p.group?.coach?.id === coach.id
+          )
+
+        return !hasPlan
+      })
+    },
+
+    // =========================
+    // Посещаемость
+    // =========================
+    attendanceStats() {
+
+      const stats = {}
+
+      this.attendance.forEach(a => {
+
+        const plan = a.training_plan
+
+        if (!plan) return
+
+        const d = new Date(plan.date)
+
+        // месяц / год
+        if (
+          d.getMonth() !== Number(this.statsMonth) - 1 ||
+          d.getFullYear() !== Number(this.statsYear)
+        ) {
+          return
+        }
+
+        // отделение
+        if (
+          this.trainingFilters.department &&
+          plan.group?.department?.id !=
+          this.trainingFilters.department
+        ) {
+          return
+        }
+
+        // тренер
+        if (
+          this.trainingFilters.coach &&
+          plan.group?.coach?.id !=
+          this.trainingFilters.coach
+        ) {
+          return
+        }
+
+        // группа
+        if (
+          this.trainingFilters.group &&
+          plan.group?.id !=
+          this.trainingFilters.group
+        ) {
+          return
+        }
+
+        const athlete = a.athlete
+
+        if (!athlete) return
+
+        const athleteId = athlete.id
+
+        if (!stats[athleteId]) {
+
+          stats[athleteId] = {
+            id: athleteId,
+
+            athlete:
+              `${athlete.last_name} ${athlete.first_name}`,
+
+            group:
+              athlete.group?.name || '—',
+
+            total: 0,
+            present: 0
+          }
+        }
+
+        stats[athleteId].total += 1
+
+        if (a.status === 'present') {
+          stats[athleteId].present += 1
+        }
+      })
+
+      return Object.values(stats).map(s => ({
+        ...s,
+
+        percent: s.total
+          ? Math.round(
+            (s.present / s.total) * 100
+          )
+          : 0
+      }))
+    },
+
+    // =========================
+    // Средняя посещаемость
+    // =========================
+    averageAttendance() {
+
+      if (!this.attendanceStats.length) {
+        return 0
+      }
+
+      const total =
+        this.attendanceStats.reduce(
+          (sum, row) => sum + row.percent,
+          0
+        )
+
+      return Math.round(
+        total / this.attendanceStats.length
+      )
+    },
+
+    // =========================
+    // Группировка месячной статистики
+    // =========================
     groupedMonthlyStats() {
+
       const groups = {}
 
       this.monthlyStats.forEach(row => {
+
         if (!groups[row.department]) {
           groups[row.department] = []
         }
+
         groups[row.department].push(row)
       })
 
-      return Object.entries(groups).map(([department, rows]) => ({
-        department,
-        rows
-      }))
+      return Object.entries(groups).map(
+        ([department, rows]) => ({
+          department,
+          rows
+        })
+      )
     },
+
+    // =========================
+    // Месяцы
+    // =========================
     months() {
+
       return [
         { value: '1', label: 'Январь' },
         { value: '2', label: 'Февраль' },
@@ -166,86 +566,601 @@ export default {
         { value: '12', label: 'Декабрь' }
       ]
     },
-    years() {
-      const current = new Date().getFullYear()
-      return [current - 1, current, current + 1]
-    },
-    monthLabel() {
-      const date = new Date(Number(this.statsYear), Number(this.statsMonth) - 1, 1)
-      return date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
-    },
-    quarterLabel() {
-      const month = Number(this.statsMonth)
-      const year = Number(this.statsYear)
-      const q = Math.floor((month - 1) / 3) + 1
-      return `${q}-й квартал ${year}`
-    },
-    approvedReports() {
-      return this.competitions.filter(c => c.status === 'approved')
-    },
-    monthlyStats() {
-      const m = Number(this.statsMonth) - 1
-      const y = Number(this.statsYear)
-      return this.approvedReports.filter(c => {
-        const d = new Date(c.date)
-        return d.getMonth() === m && d.getFullYear() === y
-      }).map(c => {
-        console.log('RESULTS:', c.results, c) // ← ВОТ СЮДА
+    quarters() {
 
-        const participants = (c.results || []).length
-        const prizePlaces = (c.results || []).filter(r => !r.is_participant && r.place).length
-        return {
-          id: c.id,
-          name: c.name,
-          date: c.date,
-          location: c.location,
-          level: c.level,
-          department: c.coach?.department?.name || '—',
-          coach: c.coach?.user ? `${c.coach.user.last_name} ${c.coach.user.first_name}` : '—',
-          participants,
-          prizePlaces
-        }
-      })
+      return [
+        { value: '1', label: '1 квартал' },
+        { value: '2', label: '2 квартал' },
+        { value: '3', label: '3 квартал' },
+        { value: '4', label: '4 квартал' }
+      ]
     },
+
+    // =========================
+    // Года
+    // =========================
+    years() {
+
+      const current =
+        new Date().getFullYear()
+
+      return [
+        current - 1,
+        current,
+        current + 1
+      ]
+    },
+
+    // =========================
+    // Название месяца
+    // =========================
+    monthLabel() {
+
+      const date = new Date(
+        Number(this.statsYear),
+        Number(this.statsMonth) - 1,
+        1
+      )
+
+      return date.toLocaleDateString(
+        'ru-RU',
+        {
+          month: 'long',
+          year: 'numeric'
+        }
+      )
+    },
+
+    // =========================
+    // Название квартала
+    // =========================
+    quarterLabel() {
+
+      return `${this.statsQuarter}-й квартал ${this.statsYear}`
+    },
+
+    // =========================
+    // Утвержденные отчеты
+    // =========================
+    approvedReports() {
+
+      return this.competitions.filter(
+        c => c.status === 'approved'
+      )
+    },
+
+    // =========================
+    // Месячная статистика
+    // =========================
+    monthlyStats() {
+
+      const m =
+        Number(this.statsMonth) - 1
+
+      const y =
+        Number(this.statsYear)
+
+      return this.approvedReports
+        .filter(c => {
+
+          const d = new Date(c.date)
+
+          return (
+            d.getMonth() === m &&
+            d.getFullYear() === y
+          )
+        })
+        .map(c => {
+
+          const participants =
+            (c.results || []).length
+
+          const prizePlaces =
+            (c.results || []).filter(
+              r =>
+                !r.is_participant &&
+                r.place
+            ).length
+
+          return {
+            id: c.id,
+            name: c.name,
+            date: c.date,
+            location: c.location,
+            level: c.level,
+
+            department:
+              c.coach?.department?.name || '—',
+
+            coach: c.coach?.user
+              ? `${c.coach.user.last_name} ${c.coach.user.first_name}`
+              : '—',
+
+            participants,
+            prizePlaces
+          }
+        })
+    },
+
+    // =========================
+    // Квартальная статистика
+    // =========================
     quarterlyStats() {
-      const y = Number(this.statsYear)
-      const month = Number(this.statsMonth)
-      const q = Math.floor((month - 1) / 3)
-      const approved = this.approvedReports.filter(c => {
-        const d = new Date(c.date)
-        return d.getFullYear() === y && Math.floor(d.getMonth() / 3) === q
-      })
+
+      const y =
+        Number(this.statsYear)
+
+      // выбранный квартал
+      const q =
+        Number(this.statsQuarter) - 1
+
+      const approved =
+        this.approvedReports.filter(c => {
+
+          const d = new Date(c.date)
+
+          return (
+            d.getFullYear() === y &&
+            Math.floor(
+              d.getMonth() / 3
+            ) === q
+          )
+        })
+
       const grouped = {}
+
       approved.forEach(c => {
-        const dept = c.coach?.department?.name || '—'
-        const key = `${dept}|${c.level}`
-        const results = c.results || []
-        const participants = results.length
-        const prize = results.filter(r => !r.is_participant && r.place).length
-        if (!grouped[key]) grouped[key] = { department: dept, level: c.level, events: 0, participants: 0, prizePlaces: 0, key }
+
+        const dept =
+          c.coach?.department?.name || '—'
+
+        const key =
+          `${dept}|${c.level}`
+
+        const results =
+          c.results || []
+
+        const participants =
+          results.length
+
+        const prize =
+          results.filter(
+            r =>
+              !r.is_participant &&
+              r.place
+          ).length
+
+        if (!grouped[key]) {
+
+          grouped[key] = {
+            department: dept,
+            level: c.level,
+            events: 0,
+            participants: 0,
+            prizePlaces: 0,
+            key
+          }
+        }
+
         grouped[key].events += 1
         grouped[key].participants += participants
         grouped[key].prizePlaces += prize
       })
+
       return Object.values(grouped)
-    }
+    },
   },
+
   async mounted() {
     await this.loadData()
   },
+
   methods: {
+
+    // =========================
+    // Загрузка данных
+    // =========================
     async loadData() {
+
       try {
-        const res = await axios.get('/api/competitions/')
-        this.competitions = res.data
-      } catch (err) { console.error(err) }
+
+        const [
+          competitionsRes,
+          plansRes,
+          attendanceRes,
+          departmentsRes,
+          coachesRes,
+          groupsRes
+        ] = await Promise.all([
+
+          axios.get('/api/competitions/'),
+          axios.get('/api/training-plans/'),
+          axios.get('/api/attendance/'),
+          axios.get('/api/departments/'),
+          axios.get('/api/coaches/'),
+          axios.get('/api/groups/')
+        ])
+
+        this.competitions =
+          competitionsRes.data
+
+        this.trainingPlans =
+          plansRes.data
+
+        this.attendance =
+          attendanceRes.data
+
+        this.departments =
+          departmentsRes.data
+
+        this.coaches =
+          coachesRes.data
+
+        this.groups =
+          groupsRes.data
+
+      } catch (err) {
+
+        console.error(err)
+      }
     },
-    formatDate(date) { return date ? new Date(date).toLocaleDateString('ru-RU') : '-' }
+
+    // =========================
+    // Формат даты
+    // =========================
+    formatDate(date) {
+
+      return date
+        ? new Date(date)
+          .toLocaleDateString('ru-RU')
+        : '-'
+    },
+    exportMonthlyStats() {
+
+      if (!this.monthlyStats.length) return
+
+      const monthName =
+        this.months.find(
+          m => m.value == this.statsMonth
+        )?.label || ''
+
+      const rows = [
+
+        // Заголовок
+        ['МЕСЯЧНАЯ СТАТИСТИКА'],
+        [`Период: ${monthName} ${this.statsYear}`],
+        [],
+
+        // Шапка таблицы
+        [
+          'Отделение',
+          'Соревнование',
+          'Дата',
+          'Место',
+          'Уровень',
+          'Участников',
+          'Призовых мест',
+          'Тренер'
+        ]
+      ]
+
+      // Данные
+      this.monthlyStats.forEach(row => {
+
+        rows.push([
+          row.department,
+          row.name,
+          this.formatDate(row.date),
+          row.location,
+          row.level,
+          row.participants,
+          row.prizePlaces,
+          row.coach
+        ])
+      })
+
+      // Итоги
+      rows.push([])
+
+      rows.push([
+        'ИТОГО',
+        '',
+        '',
+        '',
+        '',
+        this.monthlyStats.reduce(
+          (a, b) => a + b.participants,
+          0
+        ),
+        this.monthlyStats.reduce(
+          (a, b) => a + b.prizePlaces,
+          0
+        ),
+        ''
+      ])
+
+      const ws =
+        XLSX.utils.aoa_to_sheet(rows)
+
+      const wb =
+        XLSX.utils.book_new()
+
+      XLSX.utils.book_append_sheet(
+        wb,
+        ws,
+        'Месячная статистика'
+      )
+
+      const file =
+        XLSX.write(wb, {
+          bookType: 'xlsx',
+          type: 'array'
+        })
+
+      saveAs(
+        new Blob([file], {
+          type:
+            'application/octet-stream'
+        }),
+        `Месячная_статистика_${monthName}_${this.statsYear}.xlsx`
+      )
+    },
+
+    // =========================
+    // Экспорт квартальной статистики
+    // =========================
+    exportQuarterlyStats() {
+
+      if (!this.quarterlyStats.length) return
+
+      const rows = [
+
+        // Заголовок
+        ['КВАРТАЛЬНАЯ СТАТИСТИКА'],
+        [
+          `Период: ${this.statsQuarter}-й квартал ${this.statsYear}`
+        ],
+        [],
+
+        // Шапка
+        [
+          'Отделение',
+          'Уровень',
+          'Соревнований',
+          'Участников',
+          'Призовых мест'
+        ]
+      ]
+
+      // Данные
+      this.quarterlyStats.forEach(row => {
+
+        rows.push([
+          row.department,
+          row.level,
+          row.events,
+          row.participants,
+          row.prizePlaces
+        ])
+      })
+
+      // Итоги
+      rows.push([])
+
+      rows.push([
+        'ИТОГО',
+        '',
+        this.quarterlyStats.reduce(
+          (a, b) => a + b.events,
+          0
+        ),
+        this.quarterlyStats.reduce(
+          (a, b) => a + b.participants,
+          0
+        ),
+        this.quarterlyStats.reduce(
+          (a, b) => a + b.prizePlaces,
+          0
+        )
+      ])
+
+      const ws =
+        XLSX.utils.aoa_to_sheet(rows)
+
+      const wb =
+        XLSX.utils.book_new()
+
+      XLSX.utils.book_append_sheet(
+        wb,
+        ws,
+        'Квартальная статистика'
+      )
+
+      const file =
+        XLSX.write(wb, {
+          bookType: 'xlsx',
+          type: 'array'
+        })
+
+      saveAs(
+        new Blob([file], {
+          type:
+            'application/octet-stream'
+        }),
+        `Квартальная_статистика_${this.statsQuarter}_квартал_${this.statsYear}.xlsx`
+      )
+    },
+    exportAttendanceStats() {
+  if (!this.attendanceStats.length) return
+
+  const workbook = XLSX.utils.book_new()
+
+  // группировка по отделениям
+  const groupedByDepartment = {}
+
+  this.attendance.forEach(a => {
+    const plan = a.training_plan
+    if (!plan) return
+
+    const dept = plan.group?.department?.name || 'Без отделения'
+
+    // фильтры
+    const d = new Date(plan.date)
+
+    if (
+      d.getMonth() !== Number(this.statsMonth) - 1 ||
+      d.getFullYear() !== Number(this.statsYear)
+    ) return
+
+    if (
+      this.trainingFilters.department &&
+      plan.group?.department?.id != this.trainingFilters.department
+    ) return
+
+    if (
+      this.trainingFilters.coach &&
+      plan.group?.coach?.id != this.trainingFilters.coach
+    ) return
+
+    if (
+      this.trainingFilters.group &&
+      plan.group?.id != this.trainingFilters.group
+    ) return
+
+    const athlete = a.athlete
+    if (!athlete) return
+
+    if (!groupedByDepartment[dept]) {
+      groupedByDepartment[dept] = {}
+    }
+
+    const id = athlete.id
+
+    if (!groupedByDepartment[dept][id]) {
+      groupedByDepartment[dept][id] = {
+        athlete: `${athlete.last_name} ${athlete.first_name}`,
+        group: athlete.group?.name || '—',
+        coach: plan.group?.coach?.user
+          ? `${plan.group.coach.user.last_name} ${plan.group.coach.user.first_name}`
+          : '—',
+        total: 0,
+        present: 0
+      }
+    }
+
+    groupedByDepartment[dept][id].total++
+
+    if (a.status === 'present') {
+      groupedByDepartment[dept][id].present++
+    }
+  })
+
+  // создание листов
+  Object.entries(groupedByDepartment).forEach(([dept, data]) => {
+    const rows = [
+      [`Отделение: ${dept}`],
+      [],
+      ['Спортсмен', 'Группа', 'Тренер', 'Посещения', 'Посещаемость %']
+    ]
+
+    Object.values(data).forEach(r => {
+      const percent = r.total
+        ? Math.round((r.present / r.total) * 100)
+        : 0
+
+      rows.push([
+        r.athlete,
+        r.group,
+        r.coach,
+        r.total,
+        percent
+      ])
+    })
+
+    const ws = XLSX.utils.aoa_to_sheet(rows)
+    XLSX.utils.book_append_sheet(workbook, ws, dept.slice(0, 30))
+  })
+
+  const file = XLSX.write(workbook, {
+    bookType: 'xlsx',
+    type: 'array'
+  })
+
+  saveAs(
+    new Blob([file], { type: 'application/octet-stream' }),
+    `Посещаемость_${this.statsYear}_${this.statsMonth}.xlsx`
+  )
+},
   }
 }
 </script>
 
 <style scoped>
+.training-layout {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.training-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.training-card h4 {
+  margin-bottom: 14px;
+  color: #1f2937;
+}
+
+.warning-item {
+  padding: 10px;
+  border-radius: 8px;
+  background: #fef2f2;
+  color: #b91c1c;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.attendance-card {
+  min-height: 400px;
+}
+
+.attendance-summary {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.attendance-circle {
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  border: 12px solid #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
+  background: #eff6ff;
+}
+
+.filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .training-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+
 .methodist-page {
   min-height: 100vh;
 
@@ -342,6 +1257,15 @@ export default {
   border: 1px solid #d1d9e0;
   background: #fff;
   cursor: pointer;
+
+}
+
+.inline-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .table-container {
@@ -387,5 +1311,26 @@ tfoot .summary-row td {
   .stats-layout {
     grid-template-columns: 1fr;
   }
+}
+
+.export-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 10px;
+  background: #27ae60;
+  color: white;
+
+  font-weight: 600;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.export-btn:hover {
+  opacity: .9;
+}
+
+.export-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
 }
 </style>

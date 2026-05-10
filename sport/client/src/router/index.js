@@ -13,9 +13,11 @@ import CoachGroups from '../views/coach/CoachGroups.vue'
 
 import ManagerMain from '../views/manager/ManagerMain.vue'
 import ManagerDocs from '../views/manager/ManagerDocs.vue'
+import ManagerStats from '../views/manager/ManagerStats.vue'
 
 import MethodistMain from '../views/methodist/MethodistMain.vue'
 import MethodistStats from '../views/methodist/MethodistStats.vue'
+
 
 const routes = [
   { path: '/', redirect: '/login' },
@@ -28,7 +30,8 @@ const routes = [
     component: ManagerDashboard,
     children: [
       { path: '', name: 'ManagerMain', component: ManagerMain },
-      { path: 'docs', name: 'ManagerDocs', component: ManagerDocs }
+      { path: 'docs', name: 'ManagerDocs', component: ManagerDocs },
+      { path: 'stats', name: 'ManagerStats', component: ManagerStats }
     ]
   },
 
