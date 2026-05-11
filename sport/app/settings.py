@@ -65,24 +65,12 @@ TEMPLATES = [
 WSGI_APPLICATION = 'app.wsgi.application'
 
 
-# # Database
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'sportSchoolDB',
-        'USER': 'murlery',
-        'PASSWORD': '25232523',
-        'HOST': 'localhost',
-        'PORT': '5432',
-    }
+    'default': dj_database_url.config(
+        default='postgresql://murlery:25232523@localhost:5432/sportSchoolDB',
+        conn_max_age=600,
+    )
 }
-
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
     {
