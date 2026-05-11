@@ -13,7 +13,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Quick-start development settings
 SECRET_KEY = 'django-insecure-d_cp5wjr0m5558-g0ixp^w6^5&@#6ihn)jwj^ci&!lrx=vzuzn'
-DEBUG = True
+DEBUG = False
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'sport2-swgy.onrender.com']
 
 
