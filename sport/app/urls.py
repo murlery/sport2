@@ -40,7 +40,7 @@ from sportSchool.api import (
     MeView
 )
 from django.http import JsonResponse
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import ensure_csrf_cookie, csrf_exempt
 
 from django.conf import settings
 from django.conf.urls.static import static
@@ -77,9 +77,9 @@ urlpatterns = [
     path('api/coach-notifications/notify-all-training-plan/', notify_all_coaches, name='notify-all'),
     path('api/coach-notifications/notify-training-plan/', notify_single_coach, name='notify-single'),
     path("api/auth/csrf/", get_csrf_token),
-    path("api/auth/login/", LoginView.as_view()),
-    path("api/auth/logout/", LogoutView.as_view()),
-    path("api/auth/me/", MeView.as_view()),
+    path("api/auth/login/", csrf_exempt(LoginView.as_view())),
+    path("api/auth/logout/", csrf_exempt(LogoutView.as_view())),
+    path("api/auth/me/", csrf_exempt(MeView.as_view())),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     
