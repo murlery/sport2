@@ -123,6 +123,7 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = []
 
 WHITENOISE_INDEX_FILE = True
+WHITENOISE_ROOT = BASE_DIR / 'staticfiles' / 'dist'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'  # ИСПРАВЛЕНО
@@ -139,6 +140,7 @@ AUTH_USER_MODEL = 'sportSchool.User'
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://sport2-swgy.onrender.com",
 ]
 
 CORS_ALLOW_CREDENTIALS = False  # False for Token auth, True for Session auth
@@ -166,6 +168,7 @@ CSRF_COOKIE_HTTPONLY = False  # False so JavaScript can read it
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://sport2-swgy.onrender.com",
 ]
 
 # Simple logging for development
