@@ -46,7 +46,8 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.views.static import serve
 from django.urls import path, re_path
-
+from sportSchool.api import CoachNotificationViewSet
+from sportSchool.views import notify_all_coaches, notify_single_coach
 
 
 router = DefaultRouter()
@@ -65,6 +66,7 @@ router.register(r'rankassignmentorders', RankAssignmentOrderViewSet)
 router.register(r'athlete-rank-assignments', AthleteRankAssignmentViewSet)
 router.register(r'statistics', StatisticsViewSet)
 router.register(r'training-plans', TrainingPlanViewSet, basename='trainingplan')
+router.register(r'coach-notifications', CoachNotificationViewSet, basename='coach-notifications')
 
 
 @ensure_csrf_cookie
@@ -72,13 +74,15 @@ def get_csrf_token(request):
     return JsonResponse({'detail': 'CSRF cookie set'})
 
 urlpatterns = [
-    
+    path('api/coach-notifications/notify-all-training-plan/', notify_all_coaches, name='notify-all'),
+    path('api/coach-notifications/notify-training-plan/', notify_single_coach, name='notify-single'),
     path("api/auth/csrf/", get_csrf_token),
     path("api/auth/login/", LoginView.as_view()),
     path("api/auth/logout/", LogoutView.as_view()),
     path("api/auth/me/", MeView.as_view()),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
+    
     
 ]
 

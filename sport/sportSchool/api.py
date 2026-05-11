@@ -52,6 +52,14 @@ from rest_framework.response import Response
 import logging
 import traceback
 
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import Coach
+from .signals import send_training_plan_reminder
+
 # Добавьте это в начало файла, если еще нет
 logger = logging.getLogger(__name__)
 # -----------------------------
@@ -523,3 +531,125 @@ class TrainingPlanViewSet(viewsets.ModelViewSet):
             "training_days_count": len(training_dates)
         }, status=status.HTTP_201_CREATED)
 
+
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import Coach, TrainingPlan
+from datetime import datetime
+
+class CoachNotificationViewSet(viewsets.ViewSet):
+    """
+    ViewSet для отправки уведомлений тренерам
+    """
+    
+    @action(detail=False, methods=['post'], url_path='notify-training-plan')
+    def notify_training_plan(self, request):
+        """
+        Отправка напоминания одному тренеру
+        Ожидает: {"coach_id": 1, "month": 10, "year": 2024}
+        """
+        coach_id = request.data.get('coach_id')
+        month = request.data.get('month')
+        year = request.data.get('year')
+        
+        if not coach_id or not month or not year:
+            return Response(
+                {'error': 'Необходимо указать coach_id, month и year'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            coach = Coach.objects.get(id=coach_id)
+        except Coach.DoesNotExist:
+            return Response(
+                {'error': 'Тренер не найден'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        # Отправляем уведомление
+        success = send_training_plan_reminder(coach, int(month), int(year))
+        
+        if success:
+            return Response(
+                {'message': f'Уведомление отправлено тренеру {coach.user.last_name} {coach.user.first_name}'},
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {'error': 'Не удалось отправить уведомление (возможно у тренера нет email)'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    
+    @action(detail=False, methods=['post'], url_path='notify-all-training-plan')
+    def notify_all_training_plan(self, request):
+        """
+        Отправка напоминания ВСЕМ тренерам, у которых нет плана за указанный месяц
+        Ожидает: {"month": 10, "year": 2024, "department_id": 1 (опционально), "coach_ids": [1,2,3] (опционально)}
+        """
+        month = request.data.get('month')
+        year = request.data.get('year')
+        department_id = request.data.get('department_id')  # опционально - фильтр по отделению
+        coach_ids = request.data.get('coach_ids', [])  # опционально - конкретные тренеры
+        
+        if not month or not year:
+            return Response(
+                {'error': 'Необходимо указать month и year'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        month = int(month)
+        year = int(year)
+        
+        # Получаем всех тренеров
+        coaches = Coach.objects.all()
+        
+        # Фильтр по отделению
+        if department_id:
+            coaches = coaches.filter(department_id=department_id)
+        
+        # Фильтр по конкретным тренерам
+        if coach_ids:
+            coaches = coaches.filter(id__in=coach_ids)
+        
+        # Находим тренеров без плана за указанный месяц
+        coaches_without_plan = []
+        
+        for coach in coaches:
+            # Проверяем есть ли у тренера группы
+            groups = coach.groups.all()
+            if not groups.exists():
+                # Если нет групп - считаем что план не нужен
+                continue
+            
+            # Проверяем есть ли план хотя бы у одной группы тренера
+            has_plan = TrainingPlan.objects.filter(
+                group__coach=coach,
+                date__year=year,
+                date__month=month
+            ).exists()
+            
+            if not has_plan:
+                coaches_without_plan.append(coach)
+        
+        if not coaches_without_plan:
+            return Response(
+                {'message': 'Все тренеры уже сформировали планы на указанный месяц', 'sent': 0, 'total': 0},
+                status=status.HTTP_200_OK
+            )
+        
+        # Отправляем уведомления
+        result = send_training_plan_reminder_to_all(coaches_without_plan, month, year)
+        
+        return Response(
+            {
+                'message': f'Уведомления отправлены: {result["success_count"]} из {result["total_count"]} тренеров',
+                'sent': result['success_count'],
+                'total': result['total_count'],
+                'failed_coaches': result['failed_coaches']
+            },
+            status=status.HTTP_200_OK
+        )

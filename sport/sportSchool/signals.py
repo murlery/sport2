@@ -3,7 +3,7 @@ from django.db.models.signals import pre_save, post_save
 from django.dispatch import receiver
 from django.core.mail import send_mail
 from django.conf import settings
-from .models import Competition, User
+from .models import Competition, User, TrainingPlan
 
 
 @receiver(pre_save, sender=Competition)
@@ -70,16 +70,16 @@ def send_report_notification(sender, instance, **kwargs):
                     recipient_list=emails,
                     fail_silently=False,
                 )
-                print(f"✅ Уведомление отправлено методистам: {emails}")
+                print(f" Уведомление отправлено методистам: {emails}")
             except Exception as e:
-                print(f"❌ Ошибка отправки методистам: {e}")
+                print(f" Ошибка отправки методистам: {e}")
     
     # ===== 2. Отправка тренеру (когда статус стал "approved" или "returned") =====
     elif instance.status in ['approved', 'returned']:
         # Получаем данные тренера
         coach = instance.coach
         if not coach or not coach.user.email:
-            print(f"❌ У тренера нет email")
+            print(f" У тренера нет email")
             return
         
         coach_email = coach.user.email
@@ -88,23 +88,23 @@ def send_report_notification(sender, instance, **kwargs):
         
         # Формируем письмо в зависимости от статуса
         if instance.status == 'approved':
-            subject = f"✅ Ваш отчет утвержден - {instance.name}"
+            subject = f" Ваш отчет утвержден - {instance.name}"
             
             message = f"""
 Здравствуйте, {coach_name}!
 
 Ваш отчет по соревнованиям "{instance.name}" ПРОШЕЛ проверку и УТВЕРЖДЕН методистом.
 
-📋 Детали отчета:
+ Детали отчета:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏆 Название: {instance.name}
-📅 Дата проведения: {instance.date}
-📍 Место проведения: {instance.location}
-🎯 Уровень: {instance.level}
-🏢 Отделение: {department_name}
+ Название: {instance.name}
+ Дата проведения: {instance.date}
+ Место проведения: {instance.location}
+ Уровень: {instance.level}
+ Отделение: {department_name}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Статус: УТВЕРЖДЕН ✅
+Статус: УТВЕРЖДЕН 
 
 Спасибо за качественно подготовленный отчет!
 
@@ -115,7 +115,7 @@ def send_report_notification(sender, instance, **kwargs):
             """
         
         else:  # status == 'returned'
-            subject = f"⚠️ Ваш отчет отправлен на доработку - {instance.name}"
+            subject = f" Ваш отчет отправлен на доработку - {instance.name}"
             comment = instance.review_comment or "Без комментария"
             
             message = f"""
@@ -123,16 +123,16 @@ def send_report_notification(sender, instance, **kwargs):
 
 Ваш отчет по соревнованиям "{instance.name}" направлен на ДОРАБОТКУ.
 
-📋 Детали отчета:
+ Детали отчета:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🏆 Название: {instance.name}
-📅 Дата проведения: {instance.date}
-📍 Место проведения: {instance.location}
-🎯 Уровень: {instance.level}
-🏢 Отделение: {department_name}
+ Название: {instance.name}
+ Дата проведения: {instance.date}
+ Место проведения: {instance.location}
+ Уровень: {instance.level}
+ Отделение: {department_name}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-💬 Комментарий методиста:
+Комментарий методиста:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 {comment}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -154,6 +154,89 @@ def send_report_notification(sender, instance, **kwargs):
                 recipient_list=[coach_email],
                 fail_silently=False,
             )
-            print(f"✅ Уведомление отправлено тренеру {coach_name} на {coach_email}")
+            print(f" Уведомление отправлено тренеру {coach_name} на {coach_email}")
         except Exception as e:
-            print(f"❌ Ошибка отправки тренеру {coach_name}: {e}")
+            print(f" Ошибка отправки тренеру {coach_name}: {e}")
+
+def send_training_plan_reminder(coach, month, year):
+    """
+    Отправка напоминания тренеру о необходимости сформировать тренировочный план
+    """
+    if not coach or not coach.user.email:
+        print(f" У тренера {coach} нет email")
+        return False
+    
+    coach_email = coach.user.email
+    coach_name = f"{coach.user.last_name} {coach.user.first_name}"
+    department_name = coach.department.name if coach.department else "Не указано"
+    
+    # Название месяца
+    month_names = {
+        1: 'январь', 2: 'февраль', 3: 'март', 4: 'апрель',
+        5: 'май', 6: 'июнь', 7: 'июль', 8: 'август',
+        9: 'сентябрь', 10: 'октябрь', 11: 'ноябрь', 12: 'декабрь'
+    }
+    month_name = month_names.get(month, str(month))
+    
+    subject = f" Напоминание: необходимо сформировать тренировочный план на {month_name}"
+    
+    message = f"""
+Здравствуйте, {coach_name}!
+
+Система контроля тренировочного процесса напоминает, что у вас отсутствует тренировочный план на {month_name} {year} года.
+
+ Информация:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ Отделение: {department_name}
+ Тренер: {coach_name}
+ Период: {month_name} {year}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ Важно: тренировочный план должен быть сформирован до начала месяца.
+
+Для формирования плана:
+1. Войдите в систему
+2. Перейдите в раздел "Тренировочные планы"
+3. Нажмите "Создать план"
+4. Заполните часы по видам тренировок
+
+---
+С уважением,
+Методист спортивной школы
+Это сообщение отправлено автоматически, пожалуйста, не отвечайте на него.
+    """
+    
+    try:
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[coach_email],
+            fail_silently=False,
+        )
+        print(f" Напоминание отправлено тренеру {coach_name} на {coach_email}")
+        return True
+    except Exception as e:
+        print(f" Ошибка отправки напоминания тренеру {coach_name}: {e}")
+        return False
+
+
+def send_training_plan_reminder_to_all(coaches_list, month, year):
+    """
+    Отправка напоминания всем тренерам в списке
+    Возвращает количество успешно отправленных уведомлений
+    """
+    success_count = 0
+    failed_coaches = []
+    
+    for coach in coaches_list:
+        if send_training_plan_reminder(coach, month, year):
+            success_count += 1
+        else:
+            failed_coaches.append(f"{coach.user.last_name} {coach.user.first_name}")
+    
+    return {
+        'success_count': success_count,
+        'total_count': len(coaches_list),
+        'failed_coaches': failed_coaches
+    }

@@ -191,11 +191,21 @@
 
             <!-- Нет тренировочного плана -->
             <div class="training-card">
-              <h4>Нет тренировочного плана</h4>
+              <div class="card-header-with-button">
+                <h4>Нет тренировочного плана</h4>
+                <button v-if="coachesWithoutPlans.length" class="notify-all-btn" @click="notifyAllCoaches"
+                  :disabled="notifyingAll">
+                  <span v-if="notifyingAll">⏳ Отправка уведомлений...</span>
+                  <span v-else>📧 Уведомить всех ({{ coachesWithoutPlans.length }})</span>
+                </button>
+              </div>
 
               <div v-if="coachesWithoutPlans.length">
                 <div v-for="coach in coachesWithoutPlans" :key="coach.id" class="warning-item">
-                  {{ coach.user.last_name }} {{ coach.user.first_name }}
+                  <div class="warning-item-content">
+                    <span class="coach-name">{{ coach.user.last_name }} {{ coach.user.first_name }}</span>
+                    <span class="coach-department">{{ coach.department?.name || 'Без отделения' }}</span>
+                  </div>
                 </div>
               </div>
 
@@ -203,7 +213,6 @@
                 Все тренеры сформировали планы
               </div>
             </div>
-
             <!-- Посещаемость -->
             <div class="training-card attendance-card">
               <h4>Посещаемость</h4>
@@ -260,6 +269,8 @@ export default {
     const today = new Date()
 
     return {
+      notifyingCoachId: null,  // Для отслеживания отправки одному тренеру
+    notifyingAll: false ,
       statsMonth: String(today.getMonth() + 1),
       statsYear: String(today.getFullYear()),
       statsQuarter: String(
@@ -279,7 +290,8 @@ export default {
         department: '',
         coach: '',
         group: ''
-      }
+      },
+       
     }
   },
 
@@ -756,6 +768,67 @@ export default {
   },
 
   methods: {
+    async notifyAllCoaches() {
+    if (!this.coachesWithoutPlans.length) {
+      this.showNotification('Нет тренеров для уведомления', 'info');
+      return;
+    }
+    
+    // Подтверждение перед отправкой
+    const confirm = window.confirm(
+      `Вы собираетесь отправить напоминание ${this.coachesWithoutPlans.length} тренерам.\n\n` +
+      `Тренеры без плана:\n${this.coachesWithoutPlans.map(c => `- ${c.user.last_name} ${c.user.first_name}`).join('\n')}\n\n` +
+      `Продолжить?`
+    );
+    
+    if (!confirm) return;
+    
+    this.notifyingAll = true;
+    
+    try {
+      const response = await axios.post('/api/coach-notifications/notify-all-training-plan/', {
+        month: this.statsMonth,
+        year: this.statsYear,
+        department_id: this.trainingFilters.department || null,
+        coach_ids: this.coachesWithoutPlans.map(c => c.id)  // Отправляем только тем, у кого нет плана
+      });
+      
+      const { sent, total, failed_coaches, message } = response.data;
+      
+      if (sent === total) {
+        this.showNotification(`✅ Успешно отправлено ${sent} из ${total} уведомлений`, 'success');
+      } else {
+        this.showNotification(
+          `⚠️ Отправлено ${sent} из ${total}.\nНе удалось: ${failed_coaches.join(', ')}`,
+          'error'
+        );
+      }
+      
+    } catch (error) {
+      console.error('Ошибка массовой отправки:', error);
+      const errorMsg = error.response?.data?.error || 'Не удалось отправить уведомления';
+      this.showNotification(errorMsg, 'error');
+      
+    } finally {
+      this.notifyingAll = false;
+    }
+  },
+  
+  showNotification(message, type = 'info') {
+    // Создаем и показываем уведомление
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.innerHTML = `
+      <span class="notification-icon">${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span>
+      <span class="notification-message">${message}</span>
+    `;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.style.animation = 'slideOut 0.3s ease-out';
+      setTimeout(() => notification.remove(), 300);
+    }, 4000);
+  },
 
     // =========================
     // Загрузка данных
@@ -991,106 +1064,106 @@ export default {
       )
     },
     exportAttendanceStats() {
-  if (!this.attendanceStats.length) return
+      if (!this.attendanceStats.length) return
 
-  const workbook = XLSX.utils.book_new()
+      const workbook = XLSX.utils.book_new()
 
-  // группировка по отделениям
-  const groupedByDepartment = {}
+      // группировка по отделениям
+      const groupedByDepartment = {}
 
-  this.attendance.forEach(a => {
-    const plan = a.training_plan
-    if (!plan) return
+      this.attendance.forEach(a => {
+        const plan = a.training_plan
+        if (!plan) return
 
-    const dept = plan.group?.department?.name || 'Без отделения'
+        const dept = plan.group?.department?.name || 'Без отделения'
 
-    // фильтры
-    const d = new Date(plan.date)
+        // фильтры
+        const d = new Date(plan.date)
 
-    if (
-      d.getMonth() !== Number(this.statsMonth) - 1 ||
-      d.getFullYear() !== Number(this.statsYear)
-    ) return
+        if (
+          d.getMonth() !== Number(this.statsMonth) - 1 ||
+          d.getFullYear() !== Number(this.statsYear)
+        ) return
 
-    if (
-      this.trainingFilters.department &&
-      plan.group?.department?.id != this.trainingFilters.department
-    ) return
+        if (
+          this.trainingFilters.department &&
+          plan.group?.department?.id != this.trainingFilters.department
+        ) return
 
-    if (
-      this.trainingFilters.coach &&
-      plan.group?.coach?.id != this.trainingFilters.coach
-    ) return
+        if (
+          this.trainingFilters.coach &&
+          plan.group?.coach?.id != this.trainingFilters.coach
+        ) return
 
-    if (
-      this.trainingFilters.group &&
-      plan.group?.id != this.trainingFilters.group
-    ) return
+        if (
+          this.trainingFilters.group &&
+          plan.group?.id != this.trainingFilters.group
+        ) return
 
-    const athlete = a.athlete
-    if (!athlete) return
+        const athlete = a.athlete
+        if (!athlete) return
 
-    if (!groupedByDepartment[dept]) {
-      groupedByDepartment[dept] = {}
-    }
+        if (!groupedByDepartment[dept]) {
+          groupedByDepartment[dept] = {}
+        }
 
-    const id = athlete.id
+        const id = athlete.id
 
-    if (!groupedByDepartment[dept][id]) {
-      groupedByDepartment[dept][id] = {
-        athlete: `${athlete.last_name} ${athlete.first_name}`,
-        group: athlete.group?.name || '—',
-        coach: plan.group?.coach?.user
-          ? `${plan.group.coach.user.last_name} ${plan.group.coach.user.first_name}`
-          : '—',
-        total: 0,
-        present: 0
-      }
-    }
+        if (!groupedByDepartment[dept][id]) {
+          groupedByDepartment[dept][id] = {
+            athlete: `${athlete.last_name} ${athlete.first_name}`,
+            group: athlete.group?.name || '—',
+            coach: plan.group?.coach?.user
+              ? `${plan.group.coach.user.last_name} ${plan.group.coach.user.first_name}`
+              : '—',
+            total: 0,
+            present: 0
+          }
+        }
 
-    groupedByDepartment[dept][id].total++
+        groupedByDepartment[dept][id].total++
 
-    if (a.status === 'present') {
-      groupedByDepartment[dept][id].present++
-    }
-  })
+        if (a.status === 'present') {
+          groupedByDepartment[dept][id].present++
+        }
+      })
 
-  // создание листов
-  Object.entries(groupedByDepartment).forEach(([dept, data]) => {
-    const rows = [
-      [`Отделение: ${dept}`],
-      [],
-      ['Спортсмен', 'Группа', 'Тренер', 'Посещения', 'Посещаемость %']
-    ]
+      // создание листов
+      Object.entries(groupedByDepartment).forEach(([dept, data]) => {
+        const rows = [
+          [`Отделение: ${dept}`],
+          [],
+          ['Спортсмен', 'Группа', 'Тренер', 'Посещения', 'Посещаемость %']
+        ]
 
-    Object.values(data).forEach(r => {
-      const percent = r.total
-        ? Math.round((r.present / r.total) * 100)
-        : 0
+        Object.values(data).forEach(r => {
+          const percent = r.total
+            ? Math.round((r.present / r.total) * 100)
+            : 0
 
-      rows.push([
-        r.athlete,
-        r.group,
-        r.coach,
-        r.total,
-        percent
-      ])
-    })
+          rows.push([
+            r.athlete,
+            r.group,
+            r.coach,
+            r.total,
+            percent
+          ])
+        })
 
-    const ws = XLSX.utils.aoa_to_sheet(rows)
-    XLSX.utils.book_append_sheet(workbook, ws, dept.slice(0, 30))
-  })
+        const ws = XLSX.utils.aoa_to_sheet(rows)
+        XLSX.utils.book_append_sheet(workbook, ws, dept.slice(0, 30))
+      })
 
-  const file = XLSX.write(workbook, {
-    bookType: 'xlsx',
-    type: 'array'
-  })
+      const file = XLSX.write(workbook, {
+        bookType: 'xlsx',
+        type: 'array'
+      })
 
-  saveAs(
-    new Blob([file], { type: 'application/octet-stream' }),
-    `Посещаемость_${this.statsYear}_${this.statsMonth}.xlsx`
-  )
-},
+      saveAs(
+        new Blob([file], { type: 'application/octet-stream' }),
+        `Посещаемость_${this.statsYear}_${this.statsMonth}.xlsx`
+      )
+    },
   }
 }
 </script>
@@ -1332,5 +1405,108 @@ tfoot .summary-row td {
 .export-btn:disabled {
   opacity: .5;
   cursor: not-allowed;
+}
+
+.card-header-with-button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.card-header-with-button h4 {
+  margin: 0;
+}
+
+.notify-all-btn {
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.notify-all-btn:hover:not(:disabled) {
+  background: #218838;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.notify-all-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.warning-item {
+  margin-bottom: 8px;
+}
+
+.warning-item-content {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #fff3cd;
+  border-radius: 8px;
+}
+
+.coach-name {
+  font-weight: 500;
+  color: #856404;
+}
+
+.coach-department {
+  font-size: 12px;
+  color: #856404;
+  opacity: 0.8;
+}
+
+.notification {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 9999;
+  animation: slideIn 0.3s ease-out;
+}
+
+.notification.success {
+  background: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
+}
+
+.notification.error {
+  background: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+.notification.info {
+  background: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 </style>
