@@ -14,7 +14,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings
 SECRET_KEY = 'django-insecure-d_cp5wjr0m5558-g0ixp^w6^5&@#6ihn)jwj^ci&!lrx=vzuzn'
 DEBUG = False
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'sport2-swgy.onrender.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'sport2-swgy.onrender.com', 'trainingsportshyunostru.ru', 'www.trainingsportshyunostru.ru']
 
 
 # Application definition
@@ -141,6 +141,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://sport2-swgy.onrender.com",
+    "https://trainingsportshyunostru.ru",
+    "https://www.trainingsportshyunostru.ru",
 ]
 
 CORS_ALLOW_CREDENTIALS = False  # False for Token auth, True for Session auth
@@ -169,6 +171,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "https://sport2-swgy.onrender.com",
+    "https://trainingsportshyunostru.ru",
+    "https://www.trainingsportshyunostru.ru",
 ]
 
 # Simple logging for development
