@@ -5,8 +5,8 @@
       <img src="../assets/logo.png" alt="Логотип" class="logo" />
     </div>
 
-    <!-- CENTER NAV -->
-    <nav class="topbar-nav" v-if="tabs.length">
+    <!-- CENTER NAV - Desktop -->
+    <nav class="topbar-nav desktop-nav" v-if="tabs.length">
       <ul ref="navList">
         <li v-for="tab in tabs" :key="tab.id">
           <a :class="{ active: isActiveTab(tab) }" @click="handleTabClick(tab)">
@@ -17,6 +17,15 @@
       </ul>
     </nav>
 
+    <!-- Mobile Menu Button -->
+    <button class="mobile-menu-btn" @click="toggleMobileMenu" v-if="tabs.length">
+      <span class="menu-icon" :class="{ open: isMobileMenuOpen }">
+        <span></span>
+        <span></span>
+        <span></span>
+      </span>
+    </button>
+
     <!-- RIGHT -->
     <div class="topbar-right">
       <slot name="right">
@@ -25,6 +34,20 @@
         </div>
         <button class="btn-exit" @click="handleLogout">Выйти</button>
       </slot>
+    </div>
+
+    <!-- Mobile Navigation -->
+    <div class="mobile-nav" :class="{ open: isMobileMenuOpen }" v-if="tabs.length">
+      <div class="mobile-nav-overlay" @click="closeMobileMenu"></div>
+      <div class="mobile-nav-content">
+        <ul>
+          <li v-for="tab in tabs" :key="tab.id" @click="handleMobileTabClick(tab)">
+            <a :class="{ active: isActiveTab(tab) }">
+              <span class="link-text">{{ tab.label }}</span>
+            </a>
+          </li>
+        </ul>
+      </div>
     </div>
   </header>
 </template>
@@ -52,6 +75,7 @@ export default {
     const navList = ref(null)
     const route = useRoute()
     const router = useRouter()
+    const isMobileMenuOpen = ref(false)
 
     const PADDING_X = 6
     const PADDING_Y = 6
@@ -63,7 +87,6 @@ export default {
         if (!navList.value) return
 
         const activeEl = navList.value.querySelector('a.active')
-        // если активного элемента нет или он скрыт — скрываем фон
         if (!activeEl || activeEl.offsetParent === null) {
           bgStyle.value = { left: '0px', width: '0px', top: '0px', height: '0px' }
           return
@@ -86,9 +109,33 @@ export default {
       if (tab.route) router.push(tab.route)
     }
 
+    const handleMobileTabClick = (tab) => {
+      if (tab.route) router.push(tab.route)
+      closeMobileMenu()
+    }
+
+    const toggleMobileMenu = () => {
+      isMobileMenuOpen.value = !isMobileMenuOpen.value
+      if (isMobileMenuOpen.value) {
+        document.body.style.overflow = 'hidden'
+      } else {
+        document.body.style.overflow = ''
+      }
+    }
+
+    const closeMobileMenu = () => {
+      isMobileMenuOpen.value = false
+      document.body.style.overflow = ''
+    }
+
     const handleLogout = () => emit('logout')
 
-    const onResize = () => updateBg()
+    const onResize = () => {
+      updateBg()
+      if (window.innerWidth > 768) {
+        closeMobileMenu()
+      }
+    }
 
     onMounted(() => {
       updateBg()
@@ -97,11 +144,22 @@ export default {
 
     onBeforeUnmount(() => {
       window.removeEventListener('resize', onResize)
+      document.body.style.overflow = ''
     })
 
     watch(() => route.name, () => updateBg())
 
-    return { bgStyle, navList, isActiveTab, handleTabClick, handleLogout }
+    return { 
+      bgStyle, 
+      navList, 
+      isActiveTab, 
+      handleTabClick, 
+      handleLogout,
+      isMobileMenuOpen,
+      toggleMobileMenu,
+      closeMobileMenu,
+      handleMobileTabClick
+    }
   },
   computed: {
     fullName() {
@@ -122,9 +180,10 @@ export default {
   background: linear-gradient(135deg, #1a1ac9, #1a1ac9);
   border-radius: 22px;
   color: white;
+  position: relative;
 }
 
-/* CENTER NAV */
+/* CENTER NAV - Desktop */
 .topbar-nav ul {
   position: relative;
   display: flex;
@@ -192,13 +251,171 @@ export default {
 
 .logo { height: 44px; width: auto; object-fit: contain; transition: 0.3s ease }
 
+/* Mobile Menu Button */
+.mobile-menu-btn {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 10px;
+  z-index: 1001;
+}
+
+.menu-icon {
+  width: 25px;
+  height: 20px;
+  position: relative;
+  display: inline-block;
+}
+
+.menu-icon span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: white;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.menu-icon span:nth-child(1) { top: 0; }
+.menu-icon span:nth-child(2) { top: 9px; }
+.menu-icon span:nth-child(3) { top: 18px; }
+
+.menu-icon.open span:nth-child(1) {
+  transform: rotate(45deg);
+  top: 9px;
+}
+
+.menu-icon.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.menu-icon.open span:nth-child(3) {
+  transform: rotate(-45deg);
+  top: 9px;
+}
+
+/* Mobile Navigation */
+.mobile-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1000;
+  visibility: hidden;
+}
+
+.mobile-nav.open {
+  visibility: visible;
+}
+
+.mobile-nav-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.mobile-nav.open .mobile-nav-overlay {
+  opacity: 1;
+}
+
+.mobile-nav-content {
+  position: absolute;
+  top: 0;
+  right: -100%;
+  width: 280px;
+  height: 100%;
+  background: linear-gradient(135deg, #1a1ac9, #1a1ac9);
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.2);
+  transition: right 0.3s ease;
+  overflow-y: auto;
+}
+
+.mobile-nav.open .mobile-nav-content {
+  right: 0;
+}
+
+.mobile-nav-content ul {
+  list-style: none;
+  padding: 80px 20px 20px;
+  margin: 0;
+}
+
+.mobile-nav-content li {
+  margin-bottom: 15px;
+}
+
+.mobile-nav-content a {
+  display: block;
+  padding: 15px 20px;
+  color: #eae7ff;
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 16px;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.mobile-nav-content a.active {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.mobile-nav-content a:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
 /* Media Queries */
-@media (max-width: 1024px) { .logo { height: 38px } }
+@media (max-width: 1024px) { 
+  .logo { height: 38px } 
+}
+
 @media (max-width: 768px) {
   .logo { height: 32px }
-  .topbar { padding: 8px 14px; border-radius: 16px }
+  .topbar { 
+    padding: 8px 14px; 
+    border-radius: 16px;
+    grid-template-columns: auto 1fr auto;
+  }
+  
   .user-name { display: none }
   .btn-exit { padding: 8px 16px; font-size: 13px }
+  
+  .desktop-nav {
+    display: none;
+  }
+  
+  .mobile-menu-btn {
+    display: block;
+    justify-self: end;
+    margin-right: 10px;
+  }
+  
+  .topbar-left {
+    justify-self: start;
+  }
+  
+  .topbar-right {
+    justify-self: end;
+  }
 }
-@media (max-width: 480px) { .logo { height: 26px } }
+
+@media (max-width: 480px) { 
+  .logo { height: 26px } 
+  .mobile-nav-content {
+    width: 260px;
+  }
+  .mobile-nav-content a {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+}
 </style>
