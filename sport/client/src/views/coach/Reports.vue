@@ -13,19 +13,19 @@
         <button class="tab" :class="{ active: activeTab === 'create' }" @click="activeTab = 'create'; clearSelection()">
           <span class="tab-label">Создать отчет</span>
         </button>
-        <div class="stats-pills">
-          <div class="stat-pill draft">
-            <span class="stat-value">{{ draftCount }}</span>
-            <span class="stat-label">Черновики</span>
-          </div>
-          <div class="stat-pill submitted">
-            <span class="stat-value">{{ submittedCount }}</span>
-            <span class="stat-label">На проверке</span>
-          </div>
-          <div class="stat-pill returned"> <!-- Изменено с approved на returned -->
-            <span class="stat-value">{{ returnedCount }}</span>
-            <span class="stat-label">На доработке</span> <!-- Изменено с Утверждено на На доработке -->
-          </div>
+      </div>
+      <div class="stats-pills">
+        <div class="stat-pill draft">
+          <span class="stat-value">{{ draftCount }}</span>
+          <span class="stat-label">Черновики</span>
+        </div>
+        <div class="stat-pill submitted">
+          <span class="stat-value">{{ submittedCount }}</span>
+          <span class="stat-label">На проверке</span>
+        </div>
+        <div class="stat-pill returned">
+          <span class="stat-value">{{ returnedCount }}</span>
+          <span class="stat-label">На доработке</span>
         </div>
       </div>
     </div>
@@ -122,6 +122,9 @@
 
         <!-- Детали отчета (правая колонка) -->
         <div class="report-details-panel" v-if="selectedReport">
+          <button class="mobile-back-btn" @click="selectedReport = null">
+            ← Назад к списку
+          </button>
           <div class="details-header">
             <h3>Детали отчета</h3>
             <div class="details-actions">
@@ -131,7 +134,7 @@
               </button>
               <button v-if="selectedReport.protocol" class="action outline small"
                 @click="downloadProtocol(selectedReport)">
-                Скачать протокол
+                Скачать
               </button>
             </div>
           </div>
@@ -403,11 +406,11 @@
 
           <div class="actions-right">
             <button class="action outline" @click="saveReport" :disabled="saving || !canSaveDraft">
-              {{ saving ? 'Сохранение...' : ' Сохранить черновик' }}
+              {{ saving ? 'Сохранение...' : '💾 Сохранить черновик' }}
             </button>
 
             <button class="action primary large" @click="submitReport" :disabled="saving || !canSubmit">
-              {{ saving ? 'Отправка...' : ' Отправить методисту' }}
+              {{ saving ? 'Отправка...' : '📤 Отправить методисту' }}
             </button>
           </div>
         </div>
@@ -479,9 +482,9 @@ export default {
       // Формы
       selectedGroup: '',
       protocolFile: null,
-      existingProtocol: null, // Для хранения имени существующего протокола
+      existingProtocol: null,
       isEditing: false,
-      editingParticipant: null, // Для редактирования участника
+      editingParticipant: null,
 
       competitionForm: {
         name: '',
@@ -554,12 +557,10 @@ export default {
     filteredReports() {
       let filtered = this.competitions
 
-      // Фильтр по статусу
       if (this.reportsFilter !== 'all') {
         filtered = filtered.filter(r => r.status === this.reportsFilter)
       }
 
-      // Поиск по названию
       if (this.reportsSearch) {
         const search = this.reportsSearch.toLowerCase()
         filtered = filtered.filter(r =>
@@ -732,7 +733,6 @@ export default {
         level: comp.level || ''
       }
 
-      // Сохраняем информацию о существующем протоколе
       if (comp.protocol) {
         const protocolUrl = comp.protocol.split('/').pop()
         this.existingProtocol = protocolUrl
@@ -773,7 +773,6 @@ export default {
 
     removeExistingProtocol() {
       this.existingProtocol = null
-      // Помечаем, что старый протокол нужно удалить
       this.protocolFile = null
     },
 
@@ -832,18 +831,11 @@ export default {
         this.showNotification('Не удалось открыть протокол', 'error')
       }
     },
-    removeExistingProtocol() {
-      this.existingProtocol = null
-      // Помечаем, что старый протокол нужно удалить
-      this.protocolFile = null
-    },
 
-    // Добавьте этот новый метод
     async downloadExistingProtocol() {
       if (!this.editingReportId) return
 
       try {
-        // Получаем текущий отчет, чтобы получить URL протокола
         const report = this.competitions.find(c => c.id === this.editingReportId)
         if (report && report.protocol) {
           await this.downloadProtocol(report)
@@ -867,7 +859,6 @@ export default {
         is_participant: participant.is_participant,
         rank: participant.rank
       }
-      // Заполняем поиск
       const athlete = this.athletes.find(a => String(a.id) === String(participant.athlete_id))
       if (athlete) {
         this.athleteSearch = this.athleteName(athlete)
@@ -905,7 +896,6 @@ export default {
       const athlete = this.athletes.find(a => String(a.id) === String(this.participantForm.athlete_id))
 
       if (this.editingParticipant) {
-        // Обновляем существующего участника
         const index = this.participants.findIndex(p => p.tempId === this.editingParticipant.tempId)
         if (index !== -1) {
           this.participants[index] = {
@@ -920,7 +910,6 @@ export default {
         }
         this.showNotification('Участник обновлен', 'success')
       } else {
-        // Добавляем нового участника
         const tempId = `temp-${Date.now()}-${Math.random()}`
         this.participants.push({
           tempId,
@@ -934,7 +923,6 @@ export default {
         this.showNotification('Участник добавлен', 'success')
       }
 
-      // Сброс формы
       this.editingParticipant = null
       this.clearParticipantForm()
     },
@@ -970,7 +958,6 @@ export default {
         const isEditing = this.isEditing && this.editingReportId
         let competitionId = this.editingReportId
 
-        // ===== СОХРАНЕНИЕ СОРЕВНОВАНИЯ =====
         const formData = new FormData()
         formData.append('name', this.competitionForm.name)
         formData.append('date', this.competitionForm.date)
@@ -982,11 +969,9 @@ export default {
           formData.append('coach_id', Number(this.coachInfo.id))
         }
 
-        // Если есть новый файл протокола - отправляем его
         if (this.protocolFile) {
           formData.append('protocol', this.protocolFile)
         } else if (isEditing && !this.existingProtocol) {
-          // Если удалили старый протокол и не загрузили новый
           formData.append('protocol', '')
         }
 
@@ -1001,27 +986,19 @@ export default {
           competitionId = Number(res.data.id)
         }
 
-        // ===== РАБОТА С УЧАСТНИКАМИ =====
-
         if (isEditing) {
-          // Получаем ВСЕ результаты и фильтруем по competitionId
           const existingRes = await axios.get('/api/competition-results/')
           const existingResults = existingRes.data.filter(r =>
             Number(r.competition) === Number(competitionId)
           )
 
-          console.log(`Results for competition ${competitionId}:`, existingResults)
-
-          // ID результатов, которые есть в форме
           const formResultIds = new Set(
             this.participants
               .filter(p => p.id)
               .map(p => p.id)
           )
 
-          // Удаляем результаты, которых нет в форме
           const toDelete = existingResults.filter(r => !formResultIds.has(r.id))
-          console.log('Results to delete:', toDelete.map(r => r.id))
 
           await Promise.all(
             toDelete.map(r =>
@@ -1030,7 +1007,6 @@ export default {
           )
         }
 
-        // Создаем или обновляем результаты
         for (const p of this.participants) {
           const payload = {
             competition: Number(competitionId),
@@ -1042,12 +1018,8 @@ export default {
           }
 
           if (isEditing && p.id) {
-            // Обновляем существующий результат
-            console.log(`Updating result ${p.id} for athlete ${p.athlete_id}`, payload)
             await axios.patch(`/api/competition-results/${p.id}/`, payload)
           } else {
-            // Создаем новый результат
-            console.log(`Creating new result for athlete ${p.athlete_id}`, payload)
             await axios.post('/api/competition-results/', payload)
           }
         }
@@ -1152,18 +1124,16 @@ export default {
 
 .reports-page {
   min-height: 100vh;
-
   padding: 24px;
+  background: #f8fafc;
 }
 
 /* ================= ШАПКА ================= */
-
 
 .stats-pills {
   display: flex;
   gap: 12px;
 }
-
 
 .stat-pill {
   display: flex;
@@ -1243,6 +1213,9 @@ export default {
   max-height: 150px;
   overflow-y: auto;
   background: white;
+  position: absolute;
+  width: 100%;
+  z-index: 10;
 }
 
 .autocomplete-list li {
@@ -1254,24 +1227,6 @@ export default {
   background: #f3f4f6;
 }
 
-@media (max-width: 768px) {
-  .tabs-container {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-  }
-
-  .tabs {
-    width: 100%;
-  }
-
-  .stats-pills {
-    justify-content: space-around;
-    width: 100%;
-  }
-}
-
-
 .tab:hover {
   background: #f3f4f6;
   color: #1f2937;
@@ -1282,8 +1237,6 @@ export default {
   color: white;
   box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
 }
-
-
 
 .tab-badge {
   padding: 2px 8px;
@@ -1362,7 +1315,6 @@ export default {
 .search-box {
   position: relative;
   width: 100%;
-  box-sizing: border-box;
 }
 
 .search-box input {
@@ -1374,25 +1326,11 @@ export default {
   outline: none;
   transition: all 0.2s;
   background: white;
-  box-sizing: border-box;
-  /* Важно! */
 }
 
 .search-box input:focus {
   border-color: #3498db;
   box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
-}
-
-.search-box::before {
-
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 16px;
-  color: #9ca3af;
-  pointer-events: none;
-  z-index: 1;
 }
 
 /* Список отчетов */
@@ -1503,8 +1441,6 @@ export default {
   color: #4b5563;
 }
 
-
-
 .review-comment {
   display: flex;
   align-items: center;
@@ -1541,11 +1477,21 @@ export default {
   color: #9ca3af;
 }
 
-
-
 .empty-details h3 {
   margin: 0 0 8px;
   color: #4b5563;
+}
+
+.mobile-back-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: #3498db;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 0;
+  margin-bottom: 16px;
 }
 
 .details-header {
@@ -1625,6 +1571,7 @@ export default {
 .participants-table {
   width: 100%;
   border-collapse: collapse;
+  min-width: 500px;
 }
 
 .participants-table th {
@@ -1719,8 +1666,6 @@ export default {
   flex: 1;
 }
 
-
-
 .participants-count {
   font-size: 14px;
   font-weight: 600;
@@ -1741,6 +1686,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  position: relative;
 }
 
 .form-field.required label::after {
@@ -1903,6 +1849,7 @@ export default {
   margin-bottom: 8px;
   border: 1px solid #e5e7eb;
   transition: all 0.2s;
+  cursor: pointer;
 }
 
 .participant-item:hover {
@@ -2288,6 +2235,7 @@ export default {
 
 /* ================= АДАПТАЦИЯ ================= */
 
+/* Планшеты и маленькие ноутбуки */
 @media (max-width: 1200px) {
   .reports-layout {
     grid-template-columns: 1fr;
@@ -2295,29 +2243,30 @@ export default {
 
   .create-report-grid {
     grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .reports-sidebar,
+  .report-details-panel {
+    min-height: auto;
   }
 }
 
+/* Мобильные устройства */
 @media (max-width: 768px) {
   .reports-page {
     padding: 12px;
   }
 
-  .page-header {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 16px;
-  }
-
-  .header-right {
-    width: 100%;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .stats-pills {
+    justify-content: space-around;
     width: 100%;
-    justify-content: space-between;
+  }
+
+  .tabs-container {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
   }
 
   .tabs {
@@ -2327,18 +2276,85 @@ export default {
   .tab {
     flex: 1;
     justify-content: center;
+    padding: 10px 16px;
+    font-size: 14px;
+  }
+
+  .tab-label {
+    font-size: 14px;
+  }
+
+  /* Скрываем детали отчета на мобильных, пока не выбран отчет */
+  .report-details-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 100;
+    border-radius: 0;
+    padding: 20px;
+    overflow-y: auto;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+  }
+
+  .report-details-panel:not(.empty) {
+    transform: translateX(0);
+  }
+
+  .mobile-back-btn {
+    display: block;
+  }
+
+  .details-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .details-actions {
+    width: 100%;
+  }
+
+  .details-actions button {
+    flex: 1;
+  }
+
+  .details-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .detail-item.full-width {
+    grid-column: span 1;
+  }
+
+  /* Форма создания отчета */
+  .create-report-layout {
+    padding: 16px;
+  }
+
+  .create-report-header h2 {
+    font-size: 20px;
+  }
+
+  .form-section {
+    padding: 16px;
   }
 
   .form-grid {
     grid-template-columns: 1fr;
-  }
-
-  .form-row {
-    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .file-field {
     grid-column: span 1;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .form-actions {
@@ -2349,29 +2365,113 @@ export default {
   .actions-left,
   .actions-right {
     width: 100%;
-  }
-
-  .actions-right {
     flex-direction: column;
   }
 
+  .actions-right button {
+    width: 100%;
+  }
+
+  /* Фильтры */
+  .filter-tabs {
+    flex-wrap: wrap;
+  }
+
+  .filter-tab {
+    flex: 1;
+    min-width: 80px;
+    font-size: 12px;
+    padding: 6px 8px;
+  }
+
+  /* Карточки отчетов */
+  .report-card-header {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .report-meta {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* Участники */
+  .participants-table-container {
+    overflow-x: auto;
+  }
+
+  .participants-table {
+    min-width: 400px;
+  }
+
+  .participant-item {
+    flex-wrap: wrap;
+  }
+
+  /* Уведомления */
   .notification {
     left: 16px;
     right: 16px;
     bottom: 16px;
+    padding: 12px 16px;
+    font-size: 14px;
+  }
+
+  /* Модальное окно */
+  .modal-content {
+    width: 95%;
+    padding: 16px;
+  }
+
+  .protocol-viewer {
+    height: 50vh;
   }
 }
 
-.file-link {
-  text-decoration: none;
-  color: inherit;
-  display: inline-block;
-  cursor: pointer;
-}
+/* Очень маленькие телефоны */
+@media (max-width: 480px) {
+  .reports-page {
+    padding: 8px;
+  }
 
-.file-link:hover {
-  text-decoration: underline;
-  color: #3498db;
+  .stat-pill {
+    min-width: 60px;
+    padding: 6px 12px;
+  }
+
+  .stat-pill .stat-value {
+    font-size: 16px;
+  }
+
+  .stat-pill .stat-label {
+    font-size: 10px;
+  }
+
+  .tab {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .report-card {
+    padding: 12px;
+  }
+
+  .report-title h4 {
+    font-size: 14px;
+  }
+
+  .action.primary.large {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
+
+  .file-upload-area {
+    padding: 16px;
+  }
+
+  .upload-text {
+    font-size: 12px;
+  }
 }
 
 .current-file {
